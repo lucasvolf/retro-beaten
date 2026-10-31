@@ -1,0 +1,26 @@
+# Local credentials (the empty example can be shared).
+.env
+.env.*
+!.env.example
+
+.venv/
+__pycache__/
+*.pyc
+backups/
+build/
+dist/
+
+# Personal collection and files generated during use.
+/data/
+/assets/images/
+/assets/previews/
+/assets/recommendations/
+/logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.zip
+
+# Local editor preferences.
+/.vscode/
