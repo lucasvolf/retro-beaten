@@ -34,7 +34,7 @@ def register_game(database_path, project_dir, game, platform, status, preview_pa
 
     record = {
         "name": name, "platform": platform, "status": status,
-        "igdb_id": igdb_id, "summary": game.get("summary") or ""
+        "favorite": False, "igdb_id": igdb_id, "summary": game.get("summary") or ""
     }
     return save_game_with_cover(database_path, project_dir, record, preview_path, insert_igdb_game)
 
@@ -52,7 +52,7 @@ def register_manual_game(database_path, project_dir, name, platform, status, cov
         raise ValueError("Choose a cover image.")
     record = {
         "name": name, "platform": platform, "status": status,
-        "igdb_id": None, "summary": summary.strip()
+        "favorite": False, "igdb_id": None, "summary": summary.strip()
     }
     return save_game_with_cover(database_path, project_dir, record, cover_path, insert_manual_game)
 

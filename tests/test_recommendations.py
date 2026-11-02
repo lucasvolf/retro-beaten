@@ -40,23 +40,30 @@ class RecommendationTests(unittest.TestCase):
         Image.new("RGB", (30, 40), "navy").save(self.source)
 
     def candidate(self, game_id, platform="PS1", name=None):
-        return {"id": game_id, "name": name or f"Game {game_id}", "genres": [1],
+        return {"id": game_id, "name": name or f"Game {game_id}", "genres": [{"id": 1, "name": "Role-playing"}],
+                "themes": [{"id": 2, "name": "Science fiction"}],
                 "platforms": [{"id": PLATFORMS[platform]["igdb_id"]}],
                 "cover": {"image_id": f"cover{game_id}"}, "summary": "Description"}
 
+    def profile(self, name="My Beaten"):
+        seed = self.candidate(9999, name=name)
+        return build_profile([seed], [dict(igdb_id=9999, favorite=True, status="beaten", platform="PC")])
+
     def pools(self):
-        return {code: [self.candidate(index * 100 + i, code) for i in range(1, 8)]
+        return {code: [self.candidate(index * 100 + i, code) for i in range(1, 11)]
                 for index, code in enumerate(PLATFORMS, 1)}
 
     def test_round_robin_variety_and_refresh_avoid_previous_batch(self):
-        profile = (Counter({1: 1}), {}, {1: "Meu Beaten"})
+        profile = self.profile()
         first = select_recommendations(self.pools(), [], profile, rng=random.Random(1))
         second = select_recommendations(self.pools(), [], profile,
                                         [g["igdb_id"] for g in first], rng=random.Random(1))
-        self.assertEqual(len(first), 12)
-        self.assertEqual(Counter(g["platform"] for g in first), Counter({p: 2 for p in PLATFORMS}))
+        self.assertEqual(len(first), 20)
+        self.assertEqual(set(g["platform"] for g in first), set(PLATFORMS))
+        counts = Counter(g["platform"] for g in first).values()
+        self.assertLessEqual(max(counts) - min(counts), 1)
         self.assertTrue({g["igdb_id"] for g in first}.isdisjoint(g["igdb_id"] for g in second))
-        self.assertTrue(all("Meu Beaten" in game["reason"] for game in first))
+        self.assertTrue(all("My Beaten" in game["reason"] for game in first))
 
     def test_excludes_all_collection_statuses_manual_names_and_duplicate_ports(self):
         collection = [dict(id=i, igdb_id=i, name=f"Game {i}", status=status)
@@ -69,22 +76,22 @@ class RecommendationTests(unittest.TestCase):
         shared["platforms"].append({"id": 8})
         selected = select_recommendations(
             {"PS1": [shared], "PS2": [shared, self.candidate(8, "PS2")]}, [],
-            (Counter({1: 1}), {}, {1: "Reference"}), rng=random.Random(1),
+            self.profile(), rng=random.Random(1),
         )
         self.assertEqual(len(selected), 2)
         self.assertEqual({g["platform"] for g in selected}, {"PS1", "PS2"})
         self.assertEqual(len({g["igdb_id"] for g in selected}), 2)
 
-    def test_profile_uses_only_beaten_and_balances_platform_sizes(self):
+    def test_profile_keeps_individual_favorites_from_each_platform(self):
         seeds = [{"id": i, "name": str(i), "genres": [1 if i < 101 else 2]} for i in range(1, 102)]
-        collection = [dict(igdb_id=i, status="beaten", platform="PC" if i < 101 else "GBA")
+        collection = [dict(igdb_id=i, status="beaten", favorite=True, platform="PC" if i < 101 else "GBA")
                       for i in range(1, 102)]
         collection.append(dict(igdb_id=200, status="playing", platform="PS1"))
         seeds.append({"id": 200, "name": "Not beaten", "genres": [3], "similar_games": [999]})
-        genres, similar, _ = build_profile(seeds, collection)
-        self.assertAlmostEqual(genres[1], genres[2])
-        self.assertNotIn(3, genres)
-        self.assertNotIn(999, similar)
+        profile = build_profile(seeds, collection)
+        self.assertEqual(len(profile), 101)
+        self.assertEqual({seed.id for seed in profile}, set(range(1, 102)))
+        self.assertFalse(any(999 in seed.related for seed in profile))
 
     def test_offline_cache_and_wishlist_keep_independent_cover(self):
         folder = self.project / "assets/recommendations"
@@ -129,7 +136,7 @@ class RecommendationTests(unittest.TestCase):
         save_recommendations(self.project, [suggestion])
         cached = (self.project / "data/recommendations.json").read_bytes()
         loaded = load_recommendations(self.project, [])
-        self.assertEqual(loaded, [{**suggestion, "reason": "Based on your Beaten collection."}])
+        self.assertEqual(loaded, [{**suggestion, "reason": "Based on your favorite Beaten collection."}])
         self.assertEqual((self.project / "data/recommendations.json").read_bytes(), cached)
 
     def test_existing_checked_database_migrates_without_losing_records_or_constraints(self):
@@ -154,20 +161,20 @@ class RecommendationTests(unittest.TestCase):
             with self.assertRaises(sqlite3.IntegrityError):
                 connection.execute("UPDATE games SET status='recommended'")
             with self.assertRaises(sqlite3.IntegrityError):
-                connection.execute("INSERT INTO games VALUES (43,'Duplicado','PS1','other.jpg','beaten',7,'')")
+                connection.execute("INSERT INTO games (id,name,platform,cover_path,status,igdb_id,summary) VALUES (43,'Duplicado','PS1','other.jpg','beaten',7,'')")
 
-    def test_fetch_queries_every_platform_and_requires_multiplatform_result(self):
-        collection = [dict(id=1, igdb_id=1, name="Beaten", status="beaten", platform="PC")]
+    def test_fetch_queries_every_platform_with_richer_metadata(self):
+        collection = [dict(id=1, igdb_id=1, name="Beaten", status="beaten", favorite=True, platform="PC")]
         pools = self.pools()
-        responses = [[{"id": 1, "name": "Beaten", "genres": [1]}], *pools.values()]
+        responses = [[self.candidate(1, name="Beaten")], *pools.values()]
         with patch("retro_beaten.services.recommendations.load_credentials", return_value=("id", "secret")), \
              patch("retro_beaten.services.recommendations.get_access_token", return_value="token"), \
              patch("retro_beaten.services.recommendations.query_games", side_effect=responses) as query, \
              patch("retro_beaten.services.recommendations.download_cover", return_value=self.source):
             result = fetch_recommendations(collection, [], self.project)
-        self.assertEqual(len(result), 12)
+        self.assertEqual(len(result), 20)
         self.assertEqual({g["platform"] for g in result}, set(PLATFORMS))
-        self.assertEqual(query.call_count, 7)
+        self.assertEqual(query.call_count, 1 + len(PLATFORMS))
         with patch("retro_beaten.services.recommendations.load_credentials") as credentials:
             with self.assertRaisesRegex(ValueError, "Beaten"):
                 fetch_recommendations([], [], self.project)
@@ -266,8 +273,7 @@ class RecommendationUITests(unittest.TestCase):
             self.root.report_callback_exception = report
 
             def start():
-                controls = next(w for w in self.root.winfo_children()
-                                if isinstance(w, RecommendationControls))
+                controls = app.recommendation_controls
                 controls.button.invoke()
                 self.root.after(150, lambda: finish(controls))
 
@@ -295,7 +301,8 @@ class RecommendationUITests(unittest.TestCase):
             with patch("retro_beaten.app.create_window", return_value=self.root), \
                  patch("retro_beaten.app.render_library", wraps=render_library) as rendering, \
                  patch("retro_beaten.ui.recommendation_controls.fetch_recommendations", return_value=[suggestion, second]):
+                app = application.RetroBeatenApp(project)
                 self.root.after(0, start)
                 self.root.after(5000, timeout)
-                application.RetroBeatenApp(project).run()
+                app.run()
             self.assertEqual(errors, [])

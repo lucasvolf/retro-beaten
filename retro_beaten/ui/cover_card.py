@@ -1,7 +1,8 @@
 """Game covers, borders, and click actions."""
 
-import customtkinter as ctk
 from PIL import Image
+import customtkinter as ctk
+from retro_beaten.ui.cover_cache import load_thumbnail
 from tkinter import Menu
 
 from retro_beaten.statuses import STATUS_LABELS, STATUS_BORDER_COLORS
@@ -11,20 +12,13 @@ COVER_SIZE = (150, 200)
 
 def create_cover(parent, cover_path, size, status):
     """Create a cover with a border matching the game's status."""
-    with Image.open(cover_path) as cover:
-        cover_image = cover.copy()
-
-    original_width, original_height = cover_image.size
-
-    scale = min(
-        size[0] / original_width,
-        size[1] / original_height
-    )
-
-    display_size = (
-        max(1, round(original_width * scale)),
-        max(1, round(original_height * scale))
-    )
+    unavailable = False
+    try:
+        cover_image, display_size = load_thumbnail(cover_path, size)
+    except (OSError, ValueError, Image.DecompressionBombError):
+        unavailable = True
+        display_size = size
+        cover_image = Image.new("RGB", size, "#191B20")
 
     cover_display = ctk.CTkImage(
         light_image=cover_image,
@@ -46,7 +40,9 @@ def create_cover(parent, cover_path, size, status):
     cover_label = ctk.CTkLabel(
         master=cover_frame,
         image=cover_display,
-        text="",
+        text="Cover unavailable" if unavailable else "",
+        text_color="#969BA5",
+        wraplength=max(60, display_size[0] - 12),
         width=display_size[0],
         height=display_size[1],
         padx=0,
@@ -64,7 +60,7 @@ def attach_status_menu(cover_frame, cover_label, game, on_status_change):
     def choose_status(new_status):
         on_status_change(game, new_status)
 
-    options = {f"Marcar como {label}": status for status, label in STATUS_LABELS.items()}
+    options = {f"Mark as {label}": status for status, label in STATUS_LABELS.items()}
     if game["status"] == "recommended":
         options = {"Add to Wishlist": "wishlist"}
 
@@ -93,3 +89,20 @@ def attach_details_click(cover_frame, cover_label, game, on_open_details):
     for widget in (cover_frame, cover_label):
         widget.configure(cursor="hand2")
         widget.bind("<Button-1>", open_details, add="+")
+
+
+def resize_cover(frame, cover_path, size):
+    """Resize an existing card without recreating its menu, bindings, or star."""
+    unavailable = False
+    try:
+        image, display_size = load_thumbnail(cover_path, size)
+    except (OSError, ValueError, Image.DecompressionBombError):
+        unavailable = True
+        display_size = size
+        image = Image.new("RGB", size, "#191B20")
+    display = ctk.CTkImage(light_image=image, dark_image=image, size=display_size)
+    label = frame.winfo_children()[0]
+    label.configure(image=display, width=display_size[0], height=display_size[1],
+                    wraplength=max(60, display_size[0] - 12),
+                    text="Cover unavailable" if unavailable else "")
+    frame.configure(width=display_size[0] + 6, height=display_size[1] + 6)

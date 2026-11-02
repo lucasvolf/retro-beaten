@@ -43,3 +43,11 @@ def load_games(images_dir):
         })
 
     return games
+
+
+def sort_games(games, order):
+    """Sort a copy; local database IDs preserve insertion order among saved games."""
+    if order == "Recently added":
+        return sorted(games, key=lambda game: game["id"], reverse=True)
+    return sorted(games, key=lambda game: normalize_name(game["name"]),
+                  reverse=order == "Name Z-A")

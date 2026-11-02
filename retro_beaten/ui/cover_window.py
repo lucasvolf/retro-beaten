@@ -6,12 +6,13 @@ import sqlite3
 from tkinter import filedialog
 
 import customtkinter as ctk
+from retro_beaten.ui.managed_window import ManagedToplevel
 from PIL import Image
 
 
-class CoverWindow(ctk.CTkToplevel):
+class CoverWindow(ManagedToplevel):
     def __init__(self, parent, game, on_save):
-        super().__init__(parent, fg_color="#111827")
+        super().__init__(parent, fg_color="#101114")
         self.title("Change cover — Retro Beaten")
         self.geometry("520x620")
         self.minsize(480, 600)
@@ -26,21 +27,21 @@ class CoverWindow(ctk.CTkToplevel):
                      font=("Segoe UI", 20, "bold"), text_color="#E7B84B",
                      wraplength=450).pack(padx=24, pady=(20, 12))
         self.preview = ctk.CTkLabel(self, text="Choose an image", width=240, height=320,
-                                    text_color="#94A3B8", fg_color="#1E293B")
+                                    text_color="#969BA5", fg_color="#191B20")
         self.preview.pack(padx=24, pady=(0, 12))
         ctk.CTkButton(self, text="Choose image...", command=self.choose_image,
-                      fg_color="#374151", hover_color="#475569").pack()
+                      fg_color="#24272D", hover_color="#33373F").pack()
         self.message = ctk.CTkLabel(self, text="PNG, JPEG or WebP. Check the preview before saving.",
-                                    text_color="#94A3B8", wraplength=450)
+                                    text_color="#969BA5", wraplength=450)
         self.message.pack(fill="x", padx=24, pady=12)
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=24, pady=20)
         self.cancel_button = ctk.CTkButton(footer, text="Cancel", command=self.destroy,
-                                           fg_color="#374151", hover_color="#475569")
+                                           fg_color="#24272D", hover_color="#33373F")
         self.cancel_button.pack(side="left")
         self.save_button = ctk.CTkButton(footer, text="Save cover", command=self.save_cover,
                                          state="disabled", fg_color="#E7B84B",
-                                         hover_color="#C99B35", text_color="#111827")
+                                         hover_color="#C99B35", text_color="#101114")
         self.save_button.pack(side="right")
 
     def choose_image(self):

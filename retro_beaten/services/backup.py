@@ -19,7 +19,7 @@ from retro_beaten.statuses import STATUS_LABELS
 from retro_beaten.storage.database import load_saved_games
 
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 MAX_GAMES = 10000
 MAX_MANIFEST_BYTES = 20 * 1024 * 1024
 MAX_COVER_BYTES = 50 * 1024 * 1024
@@ -44,10 +44,12 @@ def validate_records(records):
     if not isinstance(records, list) or len(records) > MAX_GAMES:
         raise ValueError("The game list is invalid or too large.")
     ids, igdb_versions = set(), set()
-    fields = {"id", "name", "platform", "status", "summary", "igdb_id", "cover_path", "sha256"}
+    fields = {"id", "name", "platform", "status", "summary", "igdb_id", "cover_path", "sha256", "favorite"}
     for game in records:
         if not isinstance(game, dict) or set(game) != fields:
             raise ValueError("A backup record is incomplete or invalid.")
+        if type(game["favorite"]) is not bool:
+            raise ValueError("Invalid favorite flag.")
         identifier = game["id"]
         if type(identifier) is not int or identifier <= 0 or identifier > 2**63 - 1 or identifier in ids:
             raise ValueError("Invalid or duplicate game ID.")
@@ -136,9 +138,12 @@ def prepare_backup(source, staging):
                 raise ValueError("The backup game list is too large.")
             manifest = json.loads(archive.read("collection.json"))
             if (not isinstance(manifest, dict) or manifest.get("app") != "Retro Beaten"
-                    or type(manifest.get("version")) is not int or manifest["version"] != FORMAT_VERSION):
+                    or type(manifest.get("version")) is not int or manifest["version"] not in (1, FORMAT_VERSION)):
                 raise ValueError("This file is not a compatible Retro Beaten backup.")
             records = manifest.get("games")
+            if manifest["version"] == 1 and isinstance(records, list):
+                records = [{**game, "favorite": False} if isinstance(game, dict) and "favorite" not in game else game
+                           for game in records]
             validate_records(records)
             if set(names) != {"collection.json", *(game["cover_path"] for game in records)}:
                 raise ValueError("The backup contains unexpected files or missing covers.")
@@ -164,8 +169,8 @@ def replace_records(database_path, records):
     with closing(sqlite3.connect(database_path, autocommit=False)) as connection:
         connection.execute("DELETE FROM games")
         connection.executemany("""
-            INSERT INTO games (id, name, platform, cover_path, status, igdb_id, summary)
-            VALUES (:id, :name, :platform, :cover_path, :status, :igdb_id, :summary)
+            INSERT INTO games (id, name, platform, cover_path, status, igdb_id, summary, favorite)
+            VALUES (:id, :name, :platform, :cover_path, :status, :igdb_id, :summary, :favorite)
         """, records)
         connection.commit()
 

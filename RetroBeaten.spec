@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[SPECPATH],
     binaries=[],
-    datas=collect_data_files('customtkinter'),
+    datas=collect_data_files('customtkinter') + collect_data_files('tkinterdnd2'),
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

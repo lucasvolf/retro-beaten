@@ -7,6 +7,9 @@ PLATFORMS = {
         "name": "PlayStation 2",
         "igdb_id": 8
     },
+    "PS3": {"name": "PlayStation 3", "igdb_id": 9},
+    "3DS": {"name": "Nintendo 3DS", "igdb_id": 37},
+    "SWITCH": {"name": "Nintendo Switch", "igdb_id": 130},
     "DS": {
         "name": "Nintendo DS",
         "igdb_id": 20

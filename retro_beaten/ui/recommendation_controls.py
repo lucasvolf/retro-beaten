@@ -1,12 +1,13 @@
 """Refresh button and background query communication."""
 
 from queue import Empty, Queue
+from tkinter import messagebox
 from threading import Thread
 from urllib.error import HTTPError, URLError
 
 import customtkinter as ctk
 
-from retro_beaten.services.recommendations import fetch_recommendations
+from retro_beaten.services.recommendations import fetch_recommendations, recommendation_seeds
 
 
 def run_recommendations(collection, previous_ids, project_dir, queue):
@@ -28,8 +29,9 @@ def run_recommendations(collection, previous_ids, project_dir, queue):
 
 
 class RecommendationControls(ctk.CTkFrame):
-    def __init__(self, parent, project_dir, get_collection, get_recommendations, on_ready):
+    def __init__(self, parent, project_dir, get_collection, get_recommendations, on_ready, compact=False):
         super().__init__(parent, fg_color="transparent")
+        self.compact = compact
         self.project_dir = project_dir
         self.get_collection = get_collection
         self.get_recommendations = get_recommendations
@@ -38,23 +40,28 @@ class RecommendationControls(ctk.CTkFrame):
         self.poll_id = None
         self.busy = False
         self.button = ctk.CTkButton(
-            self, text="Refresh recommendations", command=self.start_refresh,
-            fg_color="#374151", hover_color="#475569", text_color="#F8FAFC",
+            self, text="Refresh recommendations", command=self.start_refresh, width=164,
+            font=("Segoe UI", 12),
+            fg_color="#24272D", hover_color="#33373F", text_color="#F1F2F4",
         )
-        self.button.pack(side="left", padx=(0, 16))
+        self.button.pack(side="left", padx=(0, 0 if compact else 16))
         self.message = ctk.CTkLabel(
-            self, text="Recommendations based on your Beaten games, across platforms.",
-            text_color="#94A3B8", anchor="w", wraplength=580,
+            self, text="Recommendations based on your favorite Beaten games, across platforms.",
+            text_color="#969BA5", anchor="w", wraplength=580,
         )
-        self.message.pack(side="left", fill="x", expand=True)
+        if not compact:
+            self.message.pack(side="left", fill="x", expand=True)
 
     def start_refresh(self):
         if self.busy:
             return
         self.busy = True
         self.button.configure(state="disabled")
+        if self.compact:
+            self.button.configure(text="Loading recommendations...")
         self.message.configure(text="Preparing recommendations...")
         collection = [dict(game) for game in self.get_collection()]
+        self.request_seeds = recommendation_seeds(collection)
         previous_ids = [game["igdb_id"] for game in self.get_recommendations()]
         Thread(target=run_recommendations,
                args=(collection, previous_ids, self.project_dir, self.queue), daemon=True).start()
@@ -68,17 +75,30 @@ class RecommendationControls(ctk.CTkFrame):
                 if kind == "progress":
                     self.message.configure(text=value)
                     continue
+                if kind == "success" and self.request_seeds != recommendation_seeds(self.get_collection()):
+                    kind, value = "error", "Your favorite Beaten games changed. Refresh recommendations again."
+                failed = kind != "success"
                 if kind == "success":
                     try:
                         count, platforms = self.on_ready(value)
-                        text = f"{count} recommendations across {platforms} platforms. Click a cover to explore."
+                        platform_label = "platform" if platforms == 1 else "platforms"
+                        text = (f"{count} close matches across {platforms} {platform_label}. Click a cover to explore."
+                                if count else "No close matches found for your favorite Beaten games yet.")
                     except Exception:
+                        failed = True
                         text = "Could not save recommendations. Please try again."
                 else:
                     text = value
                 self.message.configure(text=text)
                 self.busy = False
-                self.button.configure(state="normal")
+                self.button.configure(state="normal", text="Refresh recommendations")
+                if self.compact:
+                    if failed:
+                        messagebox.showerror("Recommendations", text, parent=self.winfo_toplevel())
+                    else:
+                        self.button.configure(text=f"Refresh recommendations ({count})")
+                        if count == 0:
+                            messagebox.showinfo("Recommendations", text, parent=self.winfo_toplevel())
         except Empty:
             pass
         if self.busy:

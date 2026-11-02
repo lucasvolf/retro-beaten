@@ -8,13 +8,14 @@ from tkinter import filedialog, messagebox
 import sqlite3
 
 import customtkinter as ctk
+from retro_beaten.ui.managed_window import ManagedToplevel
 
 from retro_beaten.services.backup import create_backup, restore_backup
 
 
-class BackupWindow(ctk.CTkToplevel):
+class BackupWindow(ManagedToplevel):
     def __init__(self, parent, database_path, project_dir, on_restored):
-        super().__init__(parent, fg_color="#111827")
+        super().__init__(parent, fg_color="#101114")
         self.database_path = database_path
         self.project_dir = project_dir
         self.on_restored = on_restored
@@ -33,26 +34,26 @@ class BackupWindow(ctk.CTkToplevel):
         ctk.CTkLabel(
             self, text="Export your saved games and covers in a single ZIP file.\n"
             "Restore them here or in another Retro Beaten installation.",
-            text_color="#F8FAFC", justify="left", wraplength=510,
+            text_color="#F1F2F4", justify="left", wraplength=510,
         ).pack(anchor="w", padx=24, pady=(0, 20))
         self.export_button = ctk.CTkButton(
             self, text="Create backup...", command=self.export,
-            fg_color="#E7B84B", hover_color="#C99B35", text_color="#111827",
+            fg_color="#E7B84B", hover_color="#C99B35", text_color="#101114",
         )
         self.export_button.pack(anchor="w", padx=24, pady=(0, 12))
         self.restore_button = ctk.CTkButton(
             self, text="Restore backup...", command=self.restore,
-            fg_color="#374151", hover_color="#475569",
+            fg_color="#24272D", hover_color="#33373F",
         )
         self.restore_button.pack(anchor="w", padx=24)
         self.close_button = ctk.CTkButton(
-            self, text="Close", command=self.close, fg_color="#374151", hover_color="#475569",
+            self, text="Close", command=self.close, fg_color="#24272D", hover_color="#33373F",
         )
         self.close_button.pack(side="bottom", anchor="e", padx=24, pady=20)
         self.message = ctk.CTkLabel(
             self, text="Restoring replaces your current collection. Before proceeding, the app\n"
             "automatically saves a copy in the backups folder.",
-            text_color="#94A3B8", justify="left", wraplength=510, anchor="w",
+            text_color="#969BA5", justify="left", wraplength=510, anchor="w",
         )
         self.message.pack(fill="both", expand=True, padx=24, pady=(16, 0))
         # Prevent collection edits while files are being copied.

@@ -71,6 +71,9 @@ def initialize_database(database_path):
             """)
             connection.execute("DROP TABLE games")
             connection.execute("ALTER TABLE games_with_wishlist RENAME TO games")
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(games)")}
+        if "favorite" not in columns:
+            connection.execute("ALTER TABLE games ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0 CHECK (favorite IN (0, 1))")
         connection.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS games_igdb_platform
             ON games (igdb_id, platform)
@@ -108,8 +111,10 @@ def load_saved_games(database_path, project_dir):
     connection.row_factory = sqlite3.Row
 
     try:
-        rows = connection.execute("""
-            SELECT id, name, platform, cover_path, status, igdb_id, summary
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(games)")}
+        favorite_column = "favorite" if "favorite" in columns else "0 AS favorite"
+        rows = connection.execute(f"""
+            SELECT id, name, platform, cover_path, status, igdb_id, summary, {favorite_column}
             FROM games
             ORDER BY name
         """).fetchall()
@@ -118,6 +123,7 @@ def load_saved_games(database_path, project_dir):
 
         for row in rows:
             game = dict(row)
+            game["favorite"] = bool(game["favorite"])
             game["cover_path"] = project_dir / game["cover_path"]
             games.append(game)
 
@@ -250,5 +256,19 @@ def delete_saved_game(database_path, game_id):
         connection.execute("DELETE FROM games WHERE id = ?", (game_id,))
         connection.commit()
         return row[0]
+    finally:
+        connection.close()
+
+
+def update_game_favorite(database_path, game_id, favorite):
+    """Persist a favorite independently of completion status."""
+    if type(favorite) is not bool:
+        raise ValueError("Favorite must be true or false.")
+    connection = sqlite3.connect(database_path, autocommit=False)
+    try:
+        cursor = connection.execute("UPDATE games SET favorite = ? WHERE id = ?", (int(favorite), game_id))
+        if cursor.rowcount != 1:
+            raise ValueError("This game is no longer in your collection.")
+        connection.commit()
     finally:
         connection.close()

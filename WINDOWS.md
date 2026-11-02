@@ -1,4 +1,4 @@
-# Retro Beaten for Windows
+# Retro Beaten 1.1.0 for Windows
 
 Double-click `RetroBeaten.exe`. Keep the `_internal` folder beside it: it contains
 Python, the required libraries, and their resources. You do not need to install

@@ -7,6 +7,7 @@ from threading import Thread
 from urllib.error import HTTPError, URLError
 
 import customtkinter as ctk
+from retro_beaten.ui.managed_window import ManagedToplevel
 from PIL import Image
 
 from retro_beaten.services.igdb_api import load_credentials, get_access_token, search_games, download_cover
@@ -52,11 +53,11 @@ def run_preview(game, destination_dir, results_queue):
         results_queue.put(("preview", path))
 
 
-class SearchWindow(ctk.CTkToplevel):
+class SearchWindow(ManagedToplevel):
     """Manage search fields and state in a single window."""
 
     def __init__(self, parent, on_add_game, project_dir):
-        super().__init__(parent, fg_color="#111827")
+        super().__init__(parent, fg_color="#101114")
         self.title("Search games — Retro Beaten")
         self.geometry("820x720")
         self.minsize(720, 620)
@@ -84,26 +85,26 @@ class SearchWindow(ctk.CTkToplevel):
             text_color="#E7B84B"
         ).pack(anchor="w", padx=24, pady=(20, 12))
 
-        form = ctk.CTkFrame(self, fg_color="#1E293B")
+        form = ctk.CTkFrame(self, fg_color="#191B20")
         form.pack(fill="x", padx=24)
         form.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(form, text="Platform", text_color="#F8FAFC").grid(
+        ctk.CTkLabel(form, text="Platform", text_color="#F1F2F4").grid(
             row=0, column=0, padx=12, pady=12, sticky="w"
         )
         self.console_menu = ctk.CTkOptionMenu(
-            form, values=list(self.platform_codes), fg_color="#374151",
-            button_color="#374151", button_hover_color="#475569",
-            text_color="#F8FAFC", command=lambda value: self.clear_results()
+            form, values=list(self.platform_codes), fg_color="#24272D",
+            button_color="#363A43", button_hover_color="#33373F",
+            text_color="#F1F2F4", command=lambda value: self.clear_results()
         )
         self.console_menu.grid(row=0, column=1, padx=12, pady=12, sticky="ew")
 
-        ctk.CTkLabel(form, text="Game name", text_color="#F8FAFC").grid(
+        ctk.CTkLabel(form, text="Game name", text_color="#F1F2F4").grid(
             row=1, column=0, padx=12, pady=(0, 12), sticky="w"
         )
         self.name_entry = ctk.CTkEntry(
-            form, placeholder_text="e.g. Tekken 3", fg_color="#111827",
-            text_color="#F8FAFC", border_color="#374151"
+            form, placeholder_text="e.g. Tekken 3", fg_color="#101114",
+            text_color="#F1F2F4", border_color="#363A43"
         )
         self.name_entry.grid(row=1, column=1, padx=12, pady=(0, 12), sticky="ew")
         self.name_entry.bind("<Return>", lambda event: self.start_search())
@@ -111,38 +112,38 @@ class SearchWindow(ctk.CTkToplevel):
 
         self.search_button = ctk.CTkButton(
             self, text="Search", command=self.start_search,
-            fg_color="#E7B84B", hover_color="#C99B35", text_color="#111827"
+            fg_color="#E7B84B", hover_color="#C99B35", text_color="#101114"
         )
         self.search_button.pack(anchor="e", padx=24, pady=12)
         self.status_label = ctk.CTkLabel(
             self, text="Choose a platform and enter a game name.",
-            text_color="#94A3B8", anchor="w", wraplength=560
+            text_color="#969BA5", anchor="w", wraplength=560
         )
         self.status_label.pack(fill="x", padx=24, pady=(0, 8))
 
         self.result_menu = ctk.CTkOptionMenu(
             self, values=["Select um resultado"], state="disabled",
-            command=self.select_result, fg_color="#374151",
-            button_color="#374151", button_hover_color="#475569"
+            command=self.select_result, fg_color="#24272D",
+            button_color="#363A43", button_hover_color="#33373F"
         )
         self.result_menu.pack(fill="x", padx=24, pady=(0, 12))
 
         footer = ctk.CTkFrame(self, fg_color="transparent")
         footer.pack(side="bottom", fill="x", padx=24, pady=(12, 20))
-        ctk.CTkLabel(footer, text="Status", text_color="#F8FAFC").pack(side="left", padx=(0, 12))
+        ctk.CTkLabel(footer, text="Status", text_color="#F1F2F4").pack(side="left", padx=(0, 12))
         self.game_status_menu = ctk.CTkOptionMenu(
             footer, values=list(STATUS_LABELS.values()),
-            fg_color="#374151", button_color="#374151", button_hover_color="#475569"
+            fg_color="#24272D", button_color="#363A43", button_hover_color="#33373F"
         )
         self.game_status_menu.pack(side="left")
         self.add_button = ctk.CTkButton(
             footer, text="Add to collection", command=self.add_selected_game,
             state="disabled", fg_color="#E7B84B", hover_color="#C99B35",
-            text_color="#111827"
+            text_color="#101114"
         )
         self.add_button.pack(side="right")
 
-        details = ctk.CTkFrame(self, fg_color="#1E293B")
+        details = ctk.CTkFrame(self, fg_color="#191B20")
         details.pack(fill="both", expand=True, padx=24)
         details.grid_columnconfigure(1, weight=1)
         details.grid_rowconfigure(0, weight=1)
@@ -150,7 +151,7 @@ class SearchWindow(ctk.CTkToplevel):
         self.cover_label = None
         self.reset_cover("Select a game")
         self.results_box = ctk.CTkTextbox(
-            details, fg_color="#1E293B", text_color="#F8FAFC",
+            details, fg_color="#191B20", text_color="#F1F2F4",
             font=("Segoe UI", 14), wrap="word", state="disabled"
         )
         self.results_box.grid(row=0, column=1, sticky="nsew", padx=(0, 12), pady=12)
@@ -163,7 +164,7 @@ class SearchWindow(ctk.CTkToplevel):
         self.cover_display = None
         self.cover_label = ctk.CTkLabel(
             self.preview_panel, text=text, width=150, height=200,
-            text_color="#94A3B8", wraplength=145
+            text_color="#969BA5", wraplength=145
         )
         self.cover_label.grid(row=0, column=0, sticky="n", padx=16, pady=16)
 

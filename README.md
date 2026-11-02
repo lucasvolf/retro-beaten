@@ -1,6 +1,6 @@
 # Retro Beaten
 
-**Version 1.0.0** — a personal game shelf for Windows.
+**Version 1.1.0** — a personal game shelf for Windows.
 
 *A Collection of Adventures, Not Achievements.*
 
@@ -49,7 +49,7 @@ Build the Windows distribution:
 ```
 
 `RetroBeaten.spec` configures a console-free executable and includes CustomTkinter
-resources. Personal databases, covers, backups, and credentials are not bundled.
+and native file-drop resources. Personal databases, covers, backups, and credentials are not bundled.
 
 For the initial transfer from development to the executable, run:
 
@@ -67,9 +67,9 @@ existing destination. Use the app's restoration feature for subsequent transfers
 - **Playing:** games in progress, with blue borders.
 - **Wishlist:** games you want to play, with green borders.
 - **Dropped:** unfinished games you chose to leave behind, with red borders.
-- **Recommended:** suggestions based on your Beaten games, with gray borders.
+- **Recommended:** suggestions based on your favorite Beaten games, with gray borders.
 
-Covers keep their proportions within a 150 × 200 display area. Rows adapt to the
+Covers keep their proportions in Small, Medium, or Large display areas. Rows adapt to the
 window width and stay centered. Each shelf can be collapsed or expanded.
 Left-click a cover for details; right-click it to change status.
 
@@ -78,7 +78,8 @@ ignoring case, accents, spaces, and punctuation. Clear restores the full view.
 
 **Search IGDB** uses both game name and platform. Preview the result, choose a
 status, and add it to the collection. Available platforms are PlayStation 1,
-PlayStation 2, Nintendo DS, Game Boy Advance, PlayStation Portable, and PC.
+PlayStation 2, PlayStation 3, Nintendo DS, Nintendo 3DS, Nintendo Switch,
+Game Boy Advance, PlayStation Portable, and PC.
 
 **Add manually** accepts a name, platform, status, local PNG/JPEG/WebP cover, and
 optional description. The original image is copied rather than moved or renamed.
@@ -100,27 +101,60 @@ Your own names and descriptions are displayed as entered. Game metadata from
 IGDB keeps the language supplied by the service. Native file pickers and system
 dialogs follow the Windows display language.
 
+## Sidebar and dark layout
+
+The graphite sidebar contains collection navigation, IGDB/manual registration,
+recommendation refresh, display options, and tools. Select **All games**, **Playing**,
+**Beaten**, **Wishlist**, **Recommended**, or **Dropped** to change the visible shelf.
+Navigation and the collection search never modify saved records.
+
+Use the menu button beside **RETRO BEATEN** to collapse the sidebar into an icon rail.
+Hover over an icon to see its label. The expanded/collapsed state is saved for the
+next launch. On shorter windows, scroll inside the sidebar to reach the lower tools;
+its scrolling is independent of the cover library. Search stays above the library.
+
+Exhibition mode hides the sidebar and search header, then restores the previous
+sidebar state and selected shelf when you exit. The darker neutral colors also apply
+to dialogs and shelf exports; status borders and gold favorites retain their colors.
+
 ## Recommendations
 
-**Refresh recommendations** finds up to 12 games across supported platforms using
-genres and similar games from your IGDB-registered Beaten collection. Each source
-platform has equal weight. Manual games without an IGDB ID do not contribute to
-the recommendation profile.
+**Refresh recommendations** finds up to 20 games by comparing each candidate
+with your individual favorite Beaten games registered through IGDB. It considers
+genres, themes, gameplay-related keywords, and player perspective. IGDB's similar
+games provide supporting evidence, not automatic approval. Manual games without
+an IGDB ID do not contribute to the profile.
 
-The selection excludes games already in your collection by ID or normalized name
-and prefers new suggestions over the previous batch. Suggestions can repeat if
-candidates run out. Variety depends on the games and covers available from IGDB.
+A generic genre alone is insufficient. A match needs shared genres plus specific
+themes or multiple meaningful keywords, and must pass a minimum affinity score.
+The selector also excludes candidates far below the strongest matches before
+balancing platforms. It may return fewer than 20 games, or only one platform,
+when there is not enough evidence for a broader list. Missing IGDB metadata can
+therefore reduce the number of suggestions.
+
+The selection excludes games already in your collection by ID or normalized name.
+Refresh gives a small preference to new suggestions among close matches; a much
+stronger previous suggestion remains eligible. Each explanation names the best
+matching favorite and lists actual shared metadata. It does not infer traits
+from descriptions or claim to know why you personally enjoyed a game.
 
 Open a recommendation to see its details and why it was suggested. **Add to Wishlist**
 saves a permanent copy. Refreshing recommendations never removes saved games.
 
 Requests run in the background. Refreshing requires internet access; the last
 successful list remains available offline in `data/recommendations.json`, with
-covers in `assets/recommendations/`. Failed requests keep the previous list.
+covers in `assets/recommendations/`. Failed requests keep the previous valid list.
+The older genre-only cache is ignored after this upgrade; refresh once to generate
+new matches. Existing collection games and Wishlist entries are unaffected.
+
+The scoring rules live in `retro_beaten/services/recommendation_matching.py`,
+separately from network, cover downloads, and cache handling. Genre/theme/perspective
+scores use weighted overlap; keywords reward up to three shared meaningful traits.
+These are heuristic affinity scores, not probabilities or guarantees of enjoyment.
 
 ## Backup and restore
 
-Choose **Backup and restore** in the header, then **Create backup** to export a ZIP.
+Choose **Backup and restore** in the sidebar, then **Create backup** to export a ZIP.
 It includes every saved game, status, platform, ID, description, and cover.
 Credentials, previews, and recommendations are excluded.
 
@@ -202,7 +236,81 @@ Test the executable without changing your collection:
 & .\dist\RetroBeaten\RetroBeaten.exe --self-test "$PWD\build\smoke-test.json"
 ```
 
-The self-test checks the interface, covers, SQLite, and backups using a temporary
-collection without network access, then writes a JSON report. Unexpected errors
+The self-test checks navigation, details, favorites, native file-drop support,
+SQLite, backups, and process-based PNG export using a temporary collection without
+network access, then writes a JSON report. Unexpected errors
 during normal use appear in a dialog and are saved to `logs/errors.log` in the
 active data folder.
+
+## Display preferences
+
+Use **Cover size** to choose Small, Medium, or Large, and **Sort by** to order
+each shelf by name (A-Z or Z-A) or most recent addition. Recent additions use
+the local insertion order; recommendations keep their relevance order in that mode.
+Cover size, sorting, and expanded/collapsed sections are saved automatically in
+`data/preferences.json` inside the active data folder. Collection backups contain
+games and covers; display preferences remain local.
+
+**Exhibition mode** hides the tools and temporarily clears the visible search filter
+without changing its text. Covers become display-only. Use **Exit exhibition (Esc)**
+or press Escape to return to the tools and previous search. Startup uses normal mode.
+These features are included in the 1.1.0 Windows distribution.
+
+## Shelf tools
+
+- **Shelf tools** opens wallpaper, section order, and PNG export options. Choose a
+  background and adjust its darkness; the image decorates the header and window
+  margins while shelf panels stay solid for readability. A local copy is kept in
+  `data/background.png`. Remove background restores the default appearance.
+- Select a section and use **Move up / Move down**; the order is saved locally.
+- **What should I play?** opens a random Wishlist game without modifying its status.
+  Consecutive picks differ when at least two games are available.
+- Drag one PNG, JPEG or WebP from Windows Explorer onto the main window to open
+  manual registration with that cover selected. Save the form to add the game.
+- **Export shelf as PNG** exports Beaten games or the entire personal collection
+  (excluding recommendations), including collapsed shelves, in the selected order.
+  Exports run in an isolated process and leave original covers untouched.
+- Refresh recommendations requests up to 20 games across platforms. The number
+  can be lower when IGDB has too few matches or some covers cannot be downloaded.
+
+Native file drops use [tkinterdnd2](https://pypi.org/project/tkinterdnd2/), installed
+with `requirements.txt`. Wallpaper and display preferences are local settings and
+are not included in collection ZIP backups.
+
+## Favorites
+
+Click the small star in a personal cover's lower-right corner to toggle a favorite.
+Gray means unselected; gold means favorite. Favorites persist independently of
+status and survive collection backup/restore. Exhibition mode displays stars
+without allowing edits. Recommended games must be added to the collection first.
+
+Recommendations use only **favorite Beaten games linked to IGDB**, still searching
+across all supported platforms. Star those games, then refresh recommendations.
+Manual games can be favorites but cannot supply IGDB genres/similar-game references.
+Old recommendation caches are discarded; changing eligible favorites invalidates
+the suggestions and requires a refresh. No non-favorite fallback is used.
+
+New ZIP backups use format 2 to preserve favorites. Version 1.1.0 also restores
+version 1 backups, defaulting their games to not favorite. Update an older 1.0
+executable before restoring a format 2 backup.
+
+## Collection overview
+
+Open **Shelf tools → Collection overview** for total games, favorites, and counts
+for Beaten, Playing, Wishlist, and Dropped. The platform bar chart starts with
+Beaten; switch its menu to another status or All statuses. Counts use the entire
+saved collection, independent of searches and collapsed shelves, and update when
+the collection changes. Each saved game/platform entry counts once; recommendations
+are excluded. No network requests or new plotting dependencies are needed.
+
+### Responsiveness
+
+PNG export shows cover progress and a saving phase, with a Cancel export button.
+Cancelling preserves an existing destination file. During PNG compression, cancellation
+is applied before publishing the final file. Closing Shelf tools requests cancellation.
+Shelves reserve space for the full collection but only load cover images for visible
+rows and a small scrolling margin. A single canvas paints covers, borders, stars, and
+headers together, avoiding torn native child windows during Windows scrolling.
+Offscreen cards are released, and new searches replace unfinished rendering.
+Export and collection statistics still use the full collection. Display changes
+do not rebuild the Windows executable.

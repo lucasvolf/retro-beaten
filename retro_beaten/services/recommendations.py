@@ -1,6 +1,5 @@
 """Recommendations based on Beaten games, balanced across platforms."""
 
-from collections import Counter, defaultdict
 import json
 from pathlib import Path
 import random
@@ -9,6 +8,11 @@ import time
 from retro_beaten.services.igdb_api import load_credentials, get_access_token, query_games, download_cover
 from retro_beaten.library import normalize_name
 from retro_beaten.platforms import PLATFORMS
+from retro_beaten.services.recommendation_matching import (
+    FEATURE_FIELDS, MIN_AFFINITY, best_match, build_profile, candidate_filters,
+)
+
+CACHE_VERSION = 2
 
 
 def exclude_collection(candidates, collection):
@@ -20,34 +24,12 @@ def exclude_collection(candidates, collection):
             and normalize_name(game["name"]) not in names]
 
 
-def build_profile(seeds, collection):
-    """Give each platform equal weight, even with many Beaten PC games."""
-    by_id = {game["id"]: game for game in seeds}
-    groups = defaultdict(set)
-    for game in collection:
-        if game["status"] == "beaten" and game.get("igdb_id") in by_id:
-            groups[game["platform"]].add(game["igdb_id"])
-    genres = Counter()
-    similar = {}
-    genre_sources = {}
-    for ids in groups.values():
-        for game_id in sorted(ids):
-            seed = by_id[game_id]
-            seed_genres = seed.get("genres") or []
-            for genre in seed_genres:
-                genres[genre] += 1 / len(ids) / len(seed_genres)
-                genre_sources.setdefault(genre, seed["name"])
-            for related_id in seed.get("similar_games") or []:
-                similar.setdefault(related_id, seed["name"])
-    return genres, similar, genre_sources
-
-
-def select_recommendations(pools, collection, profile, previous_ids=(), limit=12, rng=None):
+def select_recommendations(pools, collection, profile, previous_ids=(), limit=20, rng=None):
     """Select one recommendation per platform each round, without duplicate games."""
     rng = rng or random.Random()
-    genres, similar, genre_sources = profile
     previous_ids = set(previous_ids)
     ranked = {}
+    matches = {}
     for platform, candidates in pools.items():
         options = []
         for game in exclude_collection(candidates, collection):
@@ -57,20 +39,25 @@ def select_recommendations(pools, collection, profile, previous_ids=(), limit=12
                 item["id"] for item in game.get("platforms", [])
             }:
                 continue
-            common = [genre for genre in game.get("genres", []) if genre in genres]
-            if game["id"] not in similar and not common:
+            if game["id"] not in matches:
+                matches[game["id"]] = best_match(game, profile)
+            match = matches[game["id"]]
+            if match is None:
                 continue
-            score = sum(genres[g] for g in common) + (3 if game["id"] in similar else 0)
-            if game["id"] in similar:
-                reason = f"Related to {similar[game['id']]} on IGDB, one of your Beaten games."
-            else:
-                source = genre_sources[max(common, key=genres.get)]
-                reason = f"Shares a genre with {source}, one of your Beaten games."
-            options.append((game["id"] in previous_ids, -score + rng.random() * 0.5, game, reason))
+            # Novelty is a small tie-breaker among close matches, never the first key.
+            score = match.score - (0.2 if game["id"] in previous_ids else 0) + rng.random() * 0.1
+            options.append((-score, game["id"], game, match.reason, match.score))
         options.sort(key=lambda option: option[:2])
         ranked[platform] = options
 
-    # Platforms with fewer candidates choose first to preserve variety.
+    # Diversity never fills a platform with much weaker matches. Compare raw
+    # affinity here so refresh/randomness cannot change the quality threshold.
+    strongest = max((option[4] for options in ranked.values() for option in options), default=0)
+    floor = max(MIN_AFFINITY, strongest * .65)
+    ranked = {code: [option for option in options if option[4] >= floor]
+              for code, options in ranked.items()}
+
+    # Platforms with fewer qualified candidates choose first to preserve variety.
     order = list(ranked)
     rng.shuffle(order)
     order.sort(key=lambda code: len(ranked[code]))
@@ -79,7 +66,7 @@ def select_recommendations(pools, collection, profile, previous_ids=(), limit=12
         added = False
         for platform in order:
             while ranked[platform]:
-                _, _, game, reason = ranked[platform].pop(0)
+                _, _, game, reason, _ = ranked[platform].pop(0)
                 name = normalize_name(game["name"])
                 if game["id"] in used_ids or name in used_names:
                     continue
@@ -102,38 +89,46 @@ def select_recommendations(pools, collection, profile, previous_ids=(), limit=12
 def fetch_recommendations(collection, previous_ids, project_dir, progress=lambda text: None):
     """Query IGDB and prepare covers without modifying the personal collection."""
     ids = sorted({int(g["igdb_id"]) for g in collection
-                  if g["status"] == "beaten" and g.get("igdb_id")})
+                  if g["status"] == "beaten" and g.get("favorite") and g.get("igdb_id")})
     if not ids:
-        raise ValueError("Add at least one Beaten game through IGDB to get recommendations.")
-    progress("Looking up your Beaten games on IGDB...")
+        raise ValueError("Star at least one Beaten game added through IGDB to get recommendations. Manual games can be favorites, but cannot be used as IGDB references.")
+    progress("Looking up your favorite Beaten games on IGDB...")
     client_id, secret = load_credentials()
     token = get_access_token(client_id, secret)
     seeds = []
     for start in range(0, len(ids), 100):
         batch = ",".join(map(str, ids[start:start + 100]))
         seeds.extend(query_games(client_id, token,
-            f"fields name, genres, similar_games; where id = ({batch}); limit 100;"))
+            f"fields name, {FEATURE_FIELDS}, similar_games; where id = ({batch}); limit 100;"))
     profile = build_profile(seeds, collection)
-    genres, similar, _ = profile
-    filters = []
-    if genres:
-        filters.append("genres = (" + ",".join(str(g) for g, _ in genres.most_common(12)) + ")")
-    if similar:
-        filters.append("id = (" + ",".join(map(str, sorted(similar))) + ")")
-    if not filters:
-        raise ValueError("IGDB has not returned genres or similar games for your Beaten collection yet.")
-    pools = {}
-    for code, platform in PLATFORMS.items():
-        progress(f"Finding recommendations for {platform['name']}...")
-        pools[code] = query_games(client_id, token, f"""
-            fields name, summary, genres, platforms.name, cover.image_id, total_rating;
-            where platforms = ({platform['igdb_id']}) & cover != null
-                & first_release_date < {int(time.time())}
-                & parent_game = null & version_parent = null
-                & ({' | '.join(filters)});
-            sort total_rating desc;
-            limit 100;
-        """)
+    filters = candidate_filters(profile)
+    related_ids = sorted({game_id for seed in profile for game_id in seed.related})
+    if not filters and not related_ids:
+        raise ValueError("IGDB has too little matching information for your favorite Beaten games yet.")
+    fields = f"name, summary, {FEATURE_FIELDS}, similar_games, platforms.name, cover.image_id, total_rating"
+    available = (f"cover != null & first_release_date < {int(time.time())} "
+                 "& parent_game = null & version_parent = null")
+    pools = {code: [] for code in PLATFORMS}
+    # Fetch explicit related games separately so rating-sorted genre queries cannot hide them.
+    for start in range(0, len(related_ids), 100):
+        batch = ",".join(map(str, related_ids[start:start + 100]))
+        related = query_games(client_id, token,
+            f"fields {fields}; where id = ({batch}) & {available}; limit 100;")
+        for code, platform in PLATFORMS.items():
+            pools[code].extend(game for game in related if platform["igdb_id"] in
+                              {item["id"] for item in game.get("platforms", [])})
+    if filters:
+        for code, platform in PLATFORMS.items():
+            progress(f"Finding close matches for {platform['name']}...")
+            pools[code].extend(query_games(client_id, token, f"""
+                fields {fields};
+                where platforms = ({platform['igdb_id']}) & {available}
+                    & ({' | '.join(filters)});
+                sort total_rating desc;
+                limit 200;
+            """))
+    # The same game can occur in related and metadata queries.
+    pools = {code: list({g["id"]: g for g in games}.values()) for code, games in pools.items()}
     suggestions = select_recommendations(pools, collection, profile, previous_ids)
     prepared = []
     for index, game in enumerate(suggestions, 1):
@@ -145,12 +140,12 @@ def fetch_recommendations(collection, previous_ids, project_dir, progress=lambda
         except (OSError, ValueError):
             continue
         prepared.append({**game, "cover_path": path})
-    if len({game["platform"] for game in prepared}) < 2:
-        raise ValueError("Could not prepare recommendations across platforms. Please refresh again.")
+    if suggestions and not prepared:
+        raise ValueError("Could not download recommendation covers. Previous recommendations were kept.")
     return prepared
 
 
-def save_recommendations(project_dir, games):
+def save_recommendations(project_dir, games, collection=()):
     """Replace the cache only after the new list is ready."""
     project_dir = Path(project_dir).resolve()
     path = project_dir / "data" / "recommendations.json"
@@ -159,7 +154,7 @@ def save_recommendations(project_dir, games):
                for game in games]
     temporary = path.with_suffix(".tmp")
     try:
-        temporary.write_text(json.dumps(records, ensure_ascii=False), encoding="utf-8")
+        temporary.write_text(json.dumps({"version": CACHE_VERSION, "favorite_seeds": recommendation_seeds(collection), "games": records}, ensure_ascii=False), encoding="utf-8")
         temporary.replace(path)
     finally:
         temporary.unlink(missing_ok=True)
@@ -169,7 +164,11 @@ def load_recommendations(project_dir, collection):
     """Load the latest recommendations offline; ignore an invalid or incomplete cache."""
     project_dir = Path(project_dir).resolve()
     try:
-        records = json.loads((project_dir / "data/recommendations.json").read_text(encoding="utf-8"))
+        cached = json.loads((project_dir / "data/recommendations.json").read_text(encoding="utf-8"))
+        if (not isinstance(cached, dict) or cached.get("version") != CACHE_VERSION
+                or cached.get("favorite_seeds") != recommendation_seeds(collection)):
+            return []
+        records = cached["games"]
         games = []
         for record in records:
             path = (project_dir / record["cover_path"]).resolve()
@@ -181,10 +180,16 @@ def load_recommendations(project_dir, collection):
             if "reason" in record:
                 reason = record["reason"]
                 if not isinstance(reason, str) or not reason.startswith((
-                    "Related to ", "Shares a genre with ", "Based on your Beaten collection.",
+                    "Related to ", "Based on ",
                 )):
-                    record = {**record, "reason": "Based on your Beaten collection."}
+                    record = {**record, "reason": "Based on your favorite Beaten collection."}
             games.append({**record, "cover_path": path})
         return exclude_collection(games, collection)
     except (OSError, ValueError, TypeError, KeyError):
         return []
+
+
+def recommendation_seeds(collection):
+    """Stable identity for the favorites used by a cached or in-flight query."""
+    return sorted({f"{game['platform']}:{game['igdb_id']}" for game in collection
+                   if game["status"] == "beaten" and game.get("favorite") and game.get("igdb_id")})
